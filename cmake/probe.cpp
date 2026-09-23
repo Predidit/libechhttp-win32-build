@@ -1,3 +1,7 @@
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#endif
 #include <curl/curl.h>
 #include <openssl/ssl.h>
 #include <cstring>
