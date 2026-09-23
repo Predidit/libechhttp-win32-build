@@ -57,7 +57,7 @@ def toolchain(target, work):
     if target.startswith('windows-'):
         if platform.system() != 'Windows':
             raise RuntimeError('Windows builds require MSVC on Windows')
-        vswhere = Path(env['ProgramFiles(x86)']) / 'Microsoft Visual Studio/Installer/vswhere.exe'
+        vswhere = Path(env.get('PROGRAMFILES(X86)', r'C:\Program Files (x86)')) / 'Microsoft Visual Studio/Installer/vswhere.exe'
         vs = Path(subprocess.check_output([str(vswhere), '-latest', '-products', '*', '-requires',
                                           'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
                                           '-property', 'installationPath'], text=True).strip())
