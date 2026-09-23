@@ -36,7 +36,11 @@ and supported targets. Builds link a probe for every target and run it on
 matching native hosts to check BoringSSL/ECH feature reporting.
 
 Push the matching `v*` tag to build all targets and publish a GitHub Release only
-after every target passes. Pull requests and manual runs build without publishing.
+after every target passes. Pull requests and manual runs of the build workflow
+only build. The separate `Publish verified SDK artifacts` workflow can publish
+an existing build without recompiling: supply its run ID and the matching
+version tag. It verifies the tagged commit, every archive and the complete target
+set, then creates a new release. It refuses to overwrite an existing release.
 Releases contain the ZIPs, individual digest files, and `SHA256SUMS`.
 Never replace an existing release: increment the SDK version for every rebuild
 or dependency/toolchain change, then update consumer URL and digest pins.
