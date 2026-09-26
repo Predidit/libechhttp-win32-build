@@ -36,13 +36,35 @@ and supported targets. Builds link a probe for every target and run it on
 matching native hosts to check BoringSSL/ECH/zlib feature reporting and gzip
 decoding. A separate consumer link-check verifies the packaged CMake targets.
 
-Push the matching `v*` tag to build all targets and publish a GitHub Release only
-after every target passes. Pull requests and manual runs of the build workflow
-only build. The separate `Publish verified SDK artifacts` workflow can publish
-an existing build without recompiling: supply its run ID and the matching
-version tag. It verifies the tagged commit, every archive and the complete target
-set, then creates a new release. It refuses to overwrite an existing release.
-Releases contain the ZIPs, individual digest files, and `SHA256SUMS`.
+Pushes to `main`, matching `v*` tags, pull requests, and manual runs build all
+targets and verify the complete SDK set. CI has read-only repository permissions;
+it never creates or changes a Release. Its `verified-sdks` artifact contains all
+ZIPs, individual digest files, and `SHA256SUMS`, after checking source commit,
+dependency pins, target coverage, and archive/file digests.
+
+Publish from a local maintainer session authenticated to GitHub as **Predidit**,
+so the Release is attributed to the maintainer rather than the Actions bot:
+
+1. Check out the commit to publish. Confirm `VERSION_TAG` matches
+   `dependencies.json`, and `RUN_ID` is a successful build at that exact commit.
+   If the tag already exists, verify it also resolves to that commit.
+2. Check the logged-in account and download the verified artifact into an empty
+   `dist/` directory. Replace the placeholders with the reviewed values:
+   ```sh
+   gh api user --jq .login
+   git rev-parse HEAD
+   gh run view RUN_ID --json conclusion,headSha
+   gh run download RUN_ID --name verified-sdks --dir dist
+   python verify_release.py VERSION_TAG --commit FULL_COMMIT_SHA
+   ```
+3. Create the Release using that personal session:
+   ```sh
+   gh release create VERSION_TAG dist/* --target FULL_COMMIT_SHA --title VERSION_TAG --notes-file RELEASE_NOTES.md
+   ```
+   An existing Release is an error for this explicit publication command; do not
+   overwrite it. Creating a tag may trigger another read-only build, which is
+   safe even when its Release already exists.
+
 Never replace an existing release: increment the SDK version for every rebuild
 or dependency/toolchain change, then update consumer URL and digest pins.
 

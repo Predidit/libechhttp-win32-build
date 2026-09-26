@@ -1,6 +1,7 @@
-name: Build and release dependency SDKs
+name: Build and verify dependency SDKs
 on:
   push:
+    branches: ['main']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -37,15 +38,12 @@ jobs:
         run: python build.py --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: build-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
+  verify:
     needs: build
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -54,10 +52,15 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           path: dist
+          pattern: build-*
           merge-multiple: true
-      - name: Verify all target archives
-        run: python verify_release.py "$GITHUB_REF_NAME"
-      - name: Publish versioned release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+      - name: Verify all target archives and source commit
+        run: |
+          tag=$(python -c 'import json; print(json.load(open("dependencies.json"))["release"])')
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then tag="$GITHUB_REF_NAME"; fi
+          python verify_release.py "$tag" --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-sdks
+          path: dist/*
+          if-no-files-found: error

@@ -1,11 +1,16 @@
+import argparse
 import hashlib
 import json
 from pathlib import Path
-import sys
 import zipfile
 
+parser = argparse.ArgumentParser(description='Verify a complete dependency SDK release')
+parser.add_argument('tag')
+parser.add_argument('--commit', help='Require this exact source commit in every archive')
+args = parser.parse_args()
+
 manifest = json.loads(Path('dependencies.json').read_text())
-if sys.argv[1] != manifest['release']:
+if args.tag != manifest['release']:
     raise SystemExit('Tag does not match the pinned manifest release')
 dist = Path('dist')
 checksums = []
@@ -18,6 +23,8 @@ for target in manifest['targets']:
         raise SystemExit(f'Checksum mismatch: {target}')
     with zipfile.ZipFile(archive) as sdk:
         metadata = json.loads(sdk.read('metadata.json'))
+        if args.commit and metadata.get('build_commit') != args.commit:
+            raise SystemExit(f'Source commit mismatch: {target}')
         if metadata['target'] != target or metadata['release'] != manifest['release']:
             raise SystemExit(f'Metadata mismatch: {target}')
         if any(metadata.get(name) != manifest[name] for name in ('curl', 'boringssl', 'zlib')):
