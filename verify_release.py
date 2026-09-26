@@ -20,6 +20,13 @@ for target in manifest['targets']:
         metadata = json.loads(sdk.read('metadata.json'))
         if metadata['target'] != target or metadata['release'] != manifest['release']:
             raise SystemExit(f'Metadata mismatch: {target}')
+        if any(metadata.get(name) != manifest[name] for name in ('curl', 'boringssl', 'zlib')):
+            raise SystemExit(f'Dependency pin mismatch: {target}')
+        extension, prefix = ('lib', '') if target.startswith('windows-') else ('a', 'lib')
+        required = {'include/zlib.h', 'include/zconf.h', 'licenses/ZLIB_LICENSE',
+                    f'lib/{prefix}zlib.{extension}'}
+        if not required.issubset(metadata['files']):
+            raise SystemExit(f'Incomplete zlib SDK: {target}')
         for path, checksum in metadata['files'].items():
             if hashlib.sha256(sdk.read(path)).hexdigest() != checksum:
                 raise SystemExit(f'File checksum mismatch: {path}')

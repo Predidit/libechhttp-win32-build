@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22)
+project(sdk_consumer LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+include("${EH_DEPS_ROOT}/cmake/EchHttpDeps.cmake")
+add_library(sdk_consumer SHARED ../cmake/probe.cpp)
+target_link_libraries(sdk_consumer PRIVATE EchHttp::curl)

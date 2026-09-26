@@ -48,7 +48,18 @@ def sources(manifest, cache):
     if not curl_dir.exists():
         with tarfile.open(archive) as tar:
             tar.extractall(cache, filter='data')
-    return boring, curl_dir
+    zlib = manifest['zlib']
+    zlib_archive = cache / f"zlib-{zlib['version']}.tar.gz"
+    if not zlib_archive.exists() or digest(zlib_archive) != zlib['sha256']:
+        with urllib.request.urlopen(zlib['url'], timeout=120) as source, zlib_archive.open('wb') as output:
+            shutil.copyfileobj(source, output)
+    if digest(zlib_archive) != zlib['sha256']:
+        raise RuntimeError('zlib SHA-256 mismatch')
+    zlib_dir = cache / f"zlib-{zlib['version']}"
+    if not zlib_dir.exists():
+        with tarfile.open(zlib_archive) as tar:
+            tar.extractall(cache, filter='data')
+    return boring, curl_dir, zlib_dir
 
 
 def toolchain(target, work):
@@ -113,7 +124,7 @@ def main():
     ninja = shutil.which('ninja', path=env.get('PATH', env.get('Path')))
     if not cmake or not ninja:
         raise RuntimeError('Install CMake >=3.22 and Ninja')
-    boring, curl = sources(manifest, options.source_cache.resolve())
+    boring, curl, zlib = sources(manifest, options.source_cache.resolve())
     common = ['-G', 'Ninja', f'-DCMAKE_MAKE_PROGRAM={ninja}', '-DCMAKE_BUILD_TYPE=Release',
               '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-DCMAKE_C_VISIBILITY_PRESET=hidden',
               '-DCMAKE_CXX_VISIBILITY_PRESET=hidden', '-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON', *arguments]
@@ -122,14 +133,26 @@ def main():
     run([cmake, '-S', boring, '-B', boring_build, *common, '-DBUILD_SHARED_LIBS=OFF',
          '-DBUILD_TESTING=OFF', '-DOPENSSL_NO_ASM=ON', '-DOPENSSL_SMALL=ON'], env=env)
     run([cmake, '--build', boring_build, '--target', 'ssl', 'crypto', '--parallel', parallel], env=env)
+    zlib_build = work / 'zlib'
+    run([cmake, '-S', zlib, '-B', zlib_build, *common,
+         '-DZLIB_BUILD_SHARED=OFF', '-DZLIB_BUILD_STATIC=ON', '-DZLIB_BUILD_TESTING=OFF'], env=env)
+    run([cmake, '--build', zlib_build, '--target', 'zlibstatic', '--parallel', parallel], env=env)
+    zlib_library = zlib_build / ('zs.lib' if target.startswith('windows-') else 'libz.a')
+    zlib_include = work / 'zlib-include'
+    zlib_include.mkdir(exist_ok=True)
+    shutil.copyfile(zlib / 'zlib.h', zlib_include / 'zlib.h')
+    shutil.copyfile(zlib_build / 'zconf.h', zlib_include / 'zconf.h')
     curl_build = work / 'curl'
     run([cmake, '-S', ROOT / 'cmake', '-B', curl_build, *common,
          f'-DEH_CURL_SOURCE={curl}', f'-DEH_BORINGSSL_SOURCE={boring}',
-         f'-DEH_BORINGSSL_BUILD={boring_build}'], env=env)
+         f'-DEH_BORINGSSL_BUILD={boring_build}',
+         f'-DZLIB_LIBRARY={zlib_library}', f'-DZLIB_INCLUDE_DIR={zlib_include}'], env=env)
     run([cmake, '--build', curl_build, '--target', 'echhttp_deps_probe', '--parallel', parallel], env=env)
     cache_text = (curl_build / 'CMakeCache.txt').read_text()
     if 'HAVE_SSL_SET1_ECH_CONFIG_LIST:INTERNAL=1' not in cache_text:
         raise RuntimeError('libcurl was built without BoringSSL ECH support')
+    if '#define HAVE_LIBZ 1' not in (curl_build / 'curl/lib/curl_config.h').read_text():
+        raise RuntimeError('libcurl was built without zlib support')
     # The probe also checks curl feature reporting at runtime on native hosts.
     native = ((target == 'windows-x64' and platform.machine().lower() in ('amd64', 'x86_64')) or
               target.startswith('linux-') or
@@ -146,13 +169,20 @@ def main():
                   'curl.lib' if windows else 'libcurl.a')]
     libraries += [(boring_build / (f'{name}.lib' if windows else f'lib{name}.a'),
                    f'{name}.lib' if windows else f'lib{name}.a') for name in ('ssl', 'crypto')]
+    libraries.append((zlib_library, 'zlib.lib' if windows else 'libzlib.a'))
+    shutil.copytree(zlib_include, stage / 'include', dirs_exist_ok=True)
     for source, filename in libraries:
         shutil.copyfile(source, stage / 'lib' / filename)
     shutil.copytree(ROOT / 'licenses', stage / 'licenses', dirs_exist_ok=True)
     (stage / 'cmake').mkdir(exist_ok=True)
     shutil.copyfile(ROOT / 'cmake/EchHttpDeps.cmake', stage / 'cmake/EchHttpDeps.cmake')
+    # Verify the shipped imported targets and their transitive dependencies.
+    consumer_build = work / 'consumer'
+    run([cmake, '-S', ROOT / 'smoke', '-B', consumer_build, *common,
+         f'-DEH_DEPS_ROOT={stage}'], env=env)
+    run([cmake, '--build', consumer_build, '--parallel', parallel], env=env)
     metadata = {'schema': 1, 'release': manifest['release'], 'target': target,
-                'curl': manifest['curl'], 'boringssl': manifest['boringssl'],
+                'curl': manifest['curl'], 'boringssl': manifest['boringssl'], 'zlib': manifest['zlib'],
                 'build_commit': os.environ.get('GITHUB_SHA', 'local'),
                 'cmake': subprocess.check_output([cmake, '--version'], text=True, env=env).splitlines()[0],
                 'compiler': next(line for line in cache_text.splitlines() if line.startswith('CMAKE_CXX_COMPILER:')),

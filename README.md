@@ -1,6 +1,6 @@
 # libechhttp-win32-build
 
-Public, independent builds of the libcurl + BoringSSL static dependency SDK for
+Public, independent builds of the libcurl + BoringSSL + zlib static dependency SDK for
 ech_http. Consumers download a versioned SDK and compile only their C++ bridge.
 This repository does not contain the ech_http Dart package or application code.
 
@@ -8,7 +8,7 @@ Targets: `windows-x64`, `windows-arm64`, `windows-ia32`.
 
 ## Contents and compatibility
 
-Each ZIP includes matching curl/OpenSSL headers, three static libraries,
+Each ZIP includes matching curl/OpenSSL/zlib headers, four static libraries,
 `cmake/EchHttpDeps.cmake`, third-party licenses, and `metadata.json` with per-file
 SHA-256 digests and build provenance. BoringSSL has no stable ABI: use the headers
 from the same SDK. All consumers must pin the archive digest as well as the tag.
@@ -20,8 +20,8 @@ The C++ runtime is not contained in these archives; the final linker supplies it
   16 KiB ELF LOAD alignment. Use NDK 28.2 or newer for the bridge.
 - macOS: 10.15 (x64), 11 (arm64); iOS: 13 (device and simulators).
 
-HTTP/1.1 and ECH are enabled; other protocols, compression libraries, and host
-CA paths are disabled. Runtime trust roots must be provided by the consumer.
+HTTP/1.1, ECH, and gzip/deflate decoding via static zlib are enabled; other
+protocols, Brotli, Zstandard, and host CA paths are disabled. Runtime trust roots must be provided by the consumer.
 The build enables PIC, hidden visibility, and disables assembly for portability.
 
 ## Build and publish
@@ -31,9 +31,10 @@ Run `python build.py --target <target>`; outputs are written to `dist/`.
 Android requires `ANDROID_NDK_HOME` pointing to the pinned NDK. Linux requires
 GCC 11. Windows discovers Visual Studio through vswhere; Apple requires Xcode.
 
-`dependencies.json` fixes the curl source SHA-256, BoringSSL commit, SDK version,
+`dependencies.json` fixes the curl/zlib source SHA-256, BoringSSL commit, SDK version,
 and supported targets. Builds link a probe for every target and run it on
-matching native hosts to check BoringSSL/ECH feature reporting.
+matching native hosts to check BoringSSL/ECH/zlib feature reporting and gzip
+decoding. A separate consumer link-check verifies the packaged CMake targets.
 
 Push the matching `v*` tag to build all targets and publish a GitHub Release only
 after every target passes. Pull requests and manual runs of the build workflow

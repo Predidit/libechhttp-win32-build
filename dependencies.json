@@ -8,10 +8,15 @@
     "repository": "https://github.com/google/boringssl.git",
     "revision": "cff1385e77b9b2095558fa625b3c35d589ffe09b"
   },
-  "release": "v0.1.0",
+  "release": "v0.1.1",
   "targets": [
     "windows-x64",
     "windows-arm64",
     "windows-ia32"
-  ]
+  ],
+  "zlib": {
+    "version": "1.3.2",
+    "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+    "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+  }
 }
